@@ -1,0 +1,22 @@
+name: Kamulog Oto Tarama
+on:
+  schedule:
+    - cron: '*/30 * * * *' # 30 dakikada bir
+  workflow_dispatch: # Manuel başlatma butonu ekler
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kodları Çek
+        uses: actions/checkout@v3
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Paketleri Yükle
+        run: pip install feedparser requests
+      - name: Taramayı Başlat
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: python oto_motor.py
