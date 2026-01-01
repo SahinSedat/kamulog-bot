@@ -2,64 +2,70 @@ import os
 import requests
 import feedparser
 
-# --- AYARLAR ---
+# GitHub Secrets'tan çekilen bilgiler
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def telegram_mesaj_gonder(metin):
-    requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": metin, "parse_mode": "HTML"})
-
-def telegram_komutlari_dinle():
-    """Telegram'dan gelen /ekle, /takip gibi komutları kontrol eder."""
+def telegram_komutlarini_oku():
+    """Telegram'dan gelen son /ekle komutunu okur ve listeye ekler."""
     url = f"https://api.telegram.org/bot{TOKEN}/getUpdates"
-    res = requests.get(url).json()
-    if not res.get("result"): return
-    
-    for update in res["result"]:
-        msg = update.get("message", {}).get("text", "")
-        if msg.startswith("/ekle "): # Kelime ekle
-            kelime = msg.replace("/ekle ", "").strip()
-            with open("kelimeler.txt", "a") as f: f.write(f"\n{kelime}")
-            telegram_mesaj_gonder(f"✅ Kelime eklendi: {kelime}")
-        elif msg.startswith("/takip "): # X veya YT hesabı ekle
-            hesap = msg.replace("/takip ", "").strip()
-            with open("hesaplar.txt", "a") as f: f.write(f"\n{hesap}")
-            telegram_mesaj_gonder(f"✅ Takip listesine eklendi: {hesap}")
+    try:
+        updates = requests.get(url).json()
+        if not updates["result"]: return
+        
+        # Sadece son mesajı kontrol et
+        son_guncelleme = updates["result"][-1]
+        mesaj = son_guncelleme.get("message", {}).get("text", "")
+        
+        if mesaj.startswith("/ekle"):
+            yeni_kelime = mesaj.replace("/ekle", "").strip()
+            if yeni_kelime:
+                # Dosyaya ekle (Hafıza)
+                with open("takip_listesi.txt", "a") as f:
+                    f.write(f"\n{yeni_kelime}")
+                
+                # Onay mesajı gönder
+                onay_mesajı = f"✅ '{yeni_kelime}' kelimesi takip listesine eklendi ve tarama başlıyor!"
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                              data={"chat_id": CHAT_ID, "text": onay_mesajı})
+    except Exception as e:
+        print(f"Komut okuma hatası: {e}")
 
-def ai_yorumla(metin):
+def ai_analiz(text):
+    if not OPENAI_KEY: return "AI Anahtarı Bulunamadı."
     url = "https://api.openai.com/v1/chat/completions"
     headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
-    prompt = f"Sen Kamulog stratejistisin. Bu içeriği analiz et, önemini yaz ve etkileşim sorusu sor: {metin}"
+    prompt = f"Kamulog markası için bu haberi analiz et, özetle ve etkileşim sorusu yaz: {text}"
     data = {"model": "gpt-4o-mini", "messages": [{"role": "user", "content": prompt}]}
     try:
         res = requests.post(url, headers=headers, json=data).json()
         return res['choices'][0]['message']['content']
     except: return "Analiz yapılamadı."
 
-def tarama_yap():
-    # Kelimeleri ve hesapları oku
-    kelimeler = open("kelimeler.txt").read().splitlines() if os.path.exists("kelimeler.txt") else ["tediye", "khk"]
-    hesaplar = open("hesaplar.txt").read().splitlines() if os.path.exists("hesaplar.txt") else []
+def calistir():
+    # Önce Telegram'dan yeni bir komut gelmiş mi bak ve varsa listeyi güncelle
+    telegram_komutlarini_oku()
 
-    kaynaklar = ["https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr", "https://www.resmigazete.gov.tr/rss/mevzuat.xml"]
-    
-    for h in hesaplar:
-        if h:
-            # X (Twitter) için Nitter
-            kaynaklar.append(f"https://nitter.poast.org/{h}/rss")
-            # YouTube için (ID ise)
-            kaynaklar.append(f"https://www.youtube.com/feeds/videos.xml?channel_id={h}")
+    if not os.path.exists("takip_listesi.txt"):
+        with open("takip_listesi.txt", "w") as f: f.write("kamulog") # Varsayılan
 
-    for url in kaynaklar:
-        feed = feedparser.parse(url)
-        for entry in feed.entries[:2]:
-            icerik = (entry.title + " " + entry.get("summary", "")).lower()
-            if any(k.lower() in icerik for k in kelimeler if k):
-                yorum = ai_yorumla(entry.title)
-                msg = f"🛰 <b>KAMULOG AI RADAR</b>\n\n📌 <b>Kaynak:</b> {url[:30]}...\n📰 <b>İçerik:</b> {entry.title}\n\n🤖 <b>AI:</b> {yorum}\n\n🔗 {entry.link}"
-                telegram_mesaj_gonder(msg)
+    with open("takip_listesi.txt", "r") as f:
+        kelimeler = [line.strip() for line in f.readlines() if line.strip()]
+
+    # Tarama Motoru (Google News + X Köprüleri)
+    kaynaklar = ["https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr"]
+    bridges = ["https://nitter.privacydev.net", "https://nitter.poast.org"]
+
+    for kelime in kelimeler:
+        # Önce haber sitelerinde ara
+        feed = feedparser.parse(kaynaklar[0])
+        for haber in feed.entries[:5]: # Son 5 habere bak
+            if kelime.lower() in haber.title.lower():
+                analiz = ai_analiz(haber.title)
+                mesaj = f"🛰 <b>RADAR YAKALADI: {kelime}</b>\n\n📰 {haber.title}\n\n🤖 <b>AI:</b> {analiz}\n\n🔗 {haber.link}"
+                requests.post(f"https://api.telegram.org/bot{TOKEN}/sendMessage", 
+                              data={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "HTML"})
 
 if __name__ == "__main__":
-    telegram_komutlari_dinle()
-    tarama_yap()
+    calistir()
