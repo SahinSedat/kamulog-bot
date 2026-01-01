@@ -12,11 +12,11 @@ st.set_page_config(page_title="Kamulog AI Control Panel", layout="wide", page_ic
 TOKEN = "8434933744:AAHkblFXXm5ibh8Bt6hKaMbaNMLvZUsPr90"
 CHAT_ID = "1409453188"
 
-# --- ARAYÜZ (Görsel Düzenleme) ---
+# --- ARAYÜZ ---
 st.markdown("""
     <style>
     .stApp { background-color: #0e1117; color: white; }
-    .stButton>button { background-color: #ff4b4b; color: white; border-radius: 10px; }
+    .stButton>button { background-color: #ff4b4b; color: white; border-radius: 10px; width: 100%; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -59,7 +59,7 @@ def ai_ile_yorumla(haber_basligi, haber_ozeti):
     """
     
     data = {
-        "model": "gpt-4o-mini", # En mantıklı seçim budur
+        "model": "gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7
     }
@@ -76,44 +76,41 @@ def telegram_gonder(mesaj):
     requests.post(url, data=payload)
 
 def tarama_yap():
-    st.write("🔎 Tarama başlatıldı...")
+    st.write(f"🔎 Tarama başlatıldı... ({datetime.now().strftime('%H:%M:%S')})")
     bulunan_haberler = []
     KAYNAKLAR = [
         "https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr",
         "https://www.resmigazete.gov.tr/rss/mevzuat.xml"
     ]
     
-    # YouTube Kanallarını Ekle
     for yid in YT_IDS:
         KAYNAKLAR.append(f"https://www.youtube.com/feeds/videos.xml?channel_id={yid}")
 
     for url in KAYNAKLAR:
-        feed = feedparser.parse(url)
-        for haber in feed.entries:
-            baslik = haber.title.lower()
-            ozet = haber.get('summary', '').lower()
-            icerik = baslik + " " + ozet
-            
-            for kelime in ANAHTAR_KELIMELER:
-                if kelime in icerik:
-                    # AI Yorumunu Al
-                    st.write(f"✅ Yakalandı: {haber.title[:50]}...")
-                    yorum = ai_ile_yorumla(haber.title, haber.get('summary', 'Özet yok'))
-                    
-                    mesaj = (
-                        f"🛰 <b>KAMULOG AI RADAR</b>\n"
-                        f"──────────────────\n"
-                        f"📰 <b>Haber:</b> {haber.title}\n\n"
-                        f"🤖 <b>AI ANALİZİ:</b>\n{yorum}\n\n"
-                        f"🔗 <a href='{haber.link}'>Kaynağa Git</a>"
-                    )
-                    
-                    telegram_gonder(mesaj)
-                    bulunan_haberler.append({"Zaman": datetime.now().strftime("%H:%M"), "Haber": haber.title})
-                    break
+        try:
+            feed = feedparser.parse(url)
+            for haber in feed.entries:
+                icerik = (haber.title + " " + haber.get('summary', '')).lower()
+                for kelime in ANAHTAR_KELIMELER:
+                    if kelime in icerik:
+                        st.write(f"✅ Yakalandı: {haber.title[:50]}...")
+                        yorum = ai_ile_yorumla(haber.title, haber.get('summary', 'Özet yok'))
+                        
+                        mesaj = (
+                            f"🛰 <b>KAMULOG AI RADAR</b>\n"
+                            f"──────────────────\n"
+                            f"📰 <b>Haber:</b> {haber.title}\n\n"
+                            f"🤖 <b>AI ANALİZİ:</b>\n{yorum}\n\n"
+                            f"🔗 <a href='{haber.link}'>Kaynağa Git</a>"
+                        )
+                        telegram_gonder(mesaj)
+                        bulunan_haberler.append({"Zaman": datetime.now().strftime("%H:%M"), "Haber": haber.title})
+                        break
+        except:
+            continue
     return bulunan_haberler
 
-# --- ANA EKRAN BUTONLARI ---
+# --- ANA EKRAN ---
 col1, col2 = st.columns(2)
 with col1:
     if st.button("🚀 Manuel Tara ve Telegram'a Gönder"):
@@ -125,8 +122,17 @@ with col1:
             st.warning("Eşleşen yeni bir haber bulunamadı.")
 
 with col2:
-    st.info("💡 **İpucu:** Sol tarafa OpenAI keyini girdikten sonra 'Tara' butonuna basarsan analizler gelmeye başlar.")
+    st.info("💡 **Bilgi:** Otomatik mod 30 dakikada bir tarama yapar. Panel açık kalmalıdır.")
 
-# Bilgilendirme
+# --- OTOMATİK MOD ---
+st.sidebar.divider()
+auto_mode = st.sidebar.checkbox("Otomatik Tarama Modu (7/24)")
+
+if auto_mode:
+    st.sidebar.success("Otomatik tarama devrede!")
+    tarama_yap()
+    time.sleep(1800)
+    st.rerun()
+
 st.divider()
-st.write("⚠️ **Not:** GitHub üzerinden Streamlit Cloud'a bağladıysan, bu sayfa kapalıyken otomatik tarama yapması için koda 'loop' eklenmelidir. Şu an manuel tetikleme ile çalışır.")
+st.write("⚠️ **Not:** GitHub ve Streamlit Cloud üzerinde 7/24 çalışma için bu sekmenin tarayıcıda açık kalması önerilir.")
