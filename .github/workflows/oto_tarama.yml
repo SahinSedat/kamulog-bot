@@ -1,8 +1,9 @@
-name: Kamulog Full Oto
+name: Kamulog Elite Radar
 on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+
 jobs:
   run-bot:
     runs-on: ubuntu-latest
@@ -14,10 +15,13 @@ jobs:
         with:
           python-version: '3.9'
       - name: Paketleri Yukle
-        run: pip install feedparser requests
-      - name: Motoru Calistir
+        run: |
+          python -m pip install --upgrade pip
+          pip install feedparser requests
+      - name: Taramayi Baslat
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python oto_motor.py
+
