@@ -2,13 +2,9 @@ import feedparser
 import requests
 import os
 
-# --- AYARLAR ---
 TOKEN = "8434933744:AAHkblFXXm5ibh8Bt6hKaMbaNMLvZUsPr90"
 CHAT_ID = "1409453188"
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
-
-ANAHTAR_KELIMELER = ["696 khk", "tediye", "memur zammı", "tayin", "becayiş", "işçi alımı", "mülakat", "promosyon"]
-YT_IDS = [] # Takip etmek istediğin kanal ID'lerini buraya tırnak içinde ekleyebilirsin
 
 def ai_ile_yorumla(baslik, ozet):
     if not OPENAI_KEY: return "Anahtar Yok"
@@ -26,8 +22,14 @@ def telegram_gonder(mesaj):
     requests.post(url, data={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "HTML"})
 
 def calistir():
+    # KELİMELERİ DOSYADAN OKU (Hata almamak için kelimeler.txt yoksa varsayılanları kullan)
+    if os.path.exists("kelimeler.txt"):
+        with open("kelimeler.txt", "r") as f:
+            ANAHTAR_KELIMELER = [line.strip().lower() for line in f.readlines() if line.strip()]
+    else:
+        ANAHTAR_KELIMELER = ["696 khk", "tediye"] # Dosya henüz yoksa bunlar çalışır
+
     KAYNAKLAR = ["https://news.google.com/rss?hl=tr&gl=TR&ceid=TR:tr", "https://www.resmigazete.gov.tr/rss/mevzuat.xml"]
-    for yid in YT_IDS: KAYNAKLAR.append(f"https://www.youtube.com/feeds/videos.xml?channel_id={yid}")
     
     for url in KAYNAKLAR:
         feed = feedparser.parse(url)
@@ -35,9 +37,9 @@ def calistir():
             icerik = (haber.title + " " + haber.get('summary', '')).lower()
             if any(kelime in icerik for kelime in ANAHTAR_KELIMELER):
                 yorum = ai_ile_yorumla(haber.title, haber.get('summary', ''))
-                mesaj = f"🛰 <b>7/24 KAMULOG OTOMATİK RADAR</b>\n\n📰 <b>Haber:</b> {haber.title}\n\n🤖 <b>AI ANALİZİ:</b>\n{yorum}\n\n🔗 {haber.link}"
+                mesaj = f"🛰 <b>7/24 KAMULOG RADAR</b>\n\n📰 <b>Haber:</b> {haber.title}\n\n🤖 <b>AI ANALİZİ:</b>\n{yorum}\n\n🔗 {haber.link}"
                 telegram_gonder(mesaj)
-                break # Her kaynaktan sadece en güncel eşleşeni alması için
+                break 
 
 if __name__ == "__main__":
     calistir()
